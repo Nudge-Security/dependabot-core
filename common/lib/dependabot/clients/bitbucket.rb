@@ -106,7 +106,11 @@ module Dependabot
         }
 
         files.each do |file|
-          absolute_path = file.name.start_with?("/") ? file.name : "/" + file.name
+          if !file.directory.nil? && !file.directory.empty? && !file.name.start_with?("/")
+            absolute_path = file.directory + (file.directory.end_with?("/") ? "" : "/") + file.name
+          else
+            absolute_path = file.name
+          end
           parameters[absolute_path] = file.content
         end
 
@@ -152,15 +156,25 @@ module Dependabot
 
       def default_reviewers(repo)
         current_uuid = current_user
-        path = "#{repo}/default-reviewers?pagelen=100&fields=values.uuid,next"
+        # NOTE: The Bitbucket App credentials that you're using will need Pullrequest read / write in order to
+        # pull the inherited
+        # users. If it fails we'll try and fallback to the repo reviewers API.
+        path = "#{repo}/effective-default-reviewers?pagelen=100&fields=values.user.uuid,next"
         reviewers_url = base_url + path
 
-        default_reviewers = paginate({ "next" => reviewers_url })
+        begin
+          default_reviewers = paginate({ "next" => reviewers_url })
+        rescue => e
+          puts "ERROR: #{e.class} on effective reviewers, message is #{e.message}. Falling aback to repository reviewers."
+          path = "#{repo}/default-reviewers?pagelen=100&fields=values.uuid,next"
+          reviewers_url = base_url + path
+          default_reviewers = paginate({ "next" => reviewers_url })
+        end
 
         reviewer_data = []
 
         default_reviewers.each do |reviewer|
-          reviewer_data.append({ uuid: reviewer.fetch("uuid") }) unless current_uuid == reviewer.fetch("uuid")
+          reviewer_data.append({ uuid: reviewer.fetch("user").fetch("uuid") }) unless current_uuid == reviewer.fetch("user").fetch("uuid")
         end
 
         reviewer_data
