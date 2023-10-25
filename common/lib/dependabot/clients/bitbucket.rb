@@ -156,7 +156,6 @@ module Dependabot
       end
 
       def default_reviewers(repo)
-        current_uuid = current_user
         # NOTE: The Bitbucket App credentials that you're using will need Pullrequest read / write in order to
         # pull the inherited
         # users. If it fails we'll try and fallback to the repo reviewers API.
@@ -174,8 +173,17 @@ module Dependabot
 
         reviewer_data = []
 
+        begin
+          current_uuid = current_user
+        rescue => e
+          puts "ERROR: #{e.message} on attempt to get current user. Probably a workspace token."
+          current_uuid = nil
+        end
+
         default_reviewers.each do |reviewer|
-          reviewer_data.append({ uuid: reviewer.fetch("user").fetch("uuid") }) unless current_uuid == reviewer.fetch("user").fetch("uuid")
+          unless current_uuid && current_uuid == reviewer.fetch("user").fetch("uuid")
+            reviewer_data.append({ uuid: reviewer.fetch("user").fetch("uuid") })
+          end
         end
 
         reviewer_data
